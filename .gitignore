@@ -1,0 +1,15 @@
+# Node.js Abhängigkeiten
+node_modules
+/npm-debug.log*
+
+# Environment-Dateien (falls wir später Tokens speichern)
+.env
+.env.local
+
+# Build-Artefakte
+/dist
+/build
+
+# Editor-Metadaten (optional, aber nützlich)
+.vscode
+.idea
