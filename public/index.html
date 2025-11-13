@@ -2,29 +2,167 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Nanoleaf CT Controller</title>
+    <title>Nanoleaf Controller</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 40px; }
         .container { max-width: 400px; margin: 0 auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
-        h1 { text-align: center; color: #333; }
+        .hidden { display: none !important; }
+        
+        h1 { width: 100%; text-align: center; color: #333; margin-bottom: 20px; }
+        h2 { border-bottom: 1px solid #eee; padding-bottom: 5px; color: #555; }
         label { display: block; margin: 15px 0 5px; font-weight: bold; }
-        input[type="range"] { width: 100%; height: 25px; }
-        #ctValue { display: inline-block; margin-left: 10px; font-weight: bold; }
-        #statusMessage { margin-top: 20px; padding: 10px; border-radius: 4px; }
+        input[type="range"] { width: 100%; height: 25px; } 
+        #ctValue, #brightnessValue, #hueValue, #satValue { display: inline-block; margin-left: 10px; font-weight: bold; }
+        #statusMessage { margin-top: 20px; padding: 10px; border-radius: 4px; width: 100%; }
         .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        #refreshButton { display: block; margin-top: 15px; padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        #refreshButton:hover { background-color: #0056b3; }
+        hr { border: 0; height: 1px; background: #ccc; margin: 20px 0; width: 100%; }
+        #setCtButton, #setBrightnessButton, #setHueButton, #setSatButton { display: none; } 
+        
+        /* On/Off Switch Styling */
+        .toggle-switch { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+        .toggle-switch label { margin: 0; }
+        .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #2196F3; }
+        input:checked + .slider:before { transform: translateX(26px); }
+
+        /* Visuelle Indikatoren */
+        .indicator-label { display: flex; justify-content: space-between; align-items: center; }
+        .indicator-bar { height: 20px; border-radius: 4px; margin-top: 5px; border: 1px solid #ccc; overflow: hidden;}
+        
+        /* Vordefinierte CSS für Slider-Hintergrundfarben */
+        #hueRange { 
+            background: linear-gradient(to right, 
+                #FF0000 0%, #FFFF00 17%, #00FF00 33%, 
+                #00FFFF 50%, #0000FF 67%, #FF00FF 83%, #FF0000 100%); 
+        }
+        #ctRange {
+            background: linear-gradient(to right, #FFC966, #FFFFF0, #D6F0FF);
+        }
+        
+        /* AUTH Bereich */
+        #authSection {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            width: 100%;
+        }
+        #generateTokenButton {
+            background-color: #ffc107;
+            color: #343a40;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        #generatedToken {
+            word-break: break-all;
+            background-color: #e9ecef;
+            padding: 8px;
+            border-radius: 3px;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        /* Steuerung Sektion (wird versteckt, wenn Auth benötigt wird) */
+        #controlContent {
+            width: 100%;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>💡 Nanoleaf Farbtemperatur</h1>
+        <h1>💡 Nanoleaf Controller Dashboard</h1>
+        
+        <div id="authSection">
+            <h2>API Authentifizierung benötigt</h2>
+            <p>1. Halten Sie den ON/OFF-Knopf am Controller 5-7 Sekunden gedrückt, bis die LED blinkt.</p>
+            <p>2. Klicken Sie innerhalb von 30 Sekunden auf den Button, um den Token zu generieren.</p>
+            <button id="generateTokenButton">Token generieren / API aktivieren</button>
+            <p id="generatedTokenMessage" style="margin-top: 10px;"></p>
+            <div id="generatedToken" style="display: none;"></div>
+        </div>
 
-        <label for="ctRange">Farbtemperatur (Kelvin):</label>
-        <input type="range" id="ctRange" min="1700" max="6500" value="4000">
-        <span id="ctValue">4000 K</span>
+        <hr id="authHr">
 
-        <button id="setCtButton" onclick="setColourTemperature()">Temperatur setzen</button>
+        <div id="controlContent" class="hidden"> 
+            <div id="deviceState">
+                <h2>Aktueller Gerätestatus</h2>
+                <p><strong>Status:</strong> <span id="display-on-state">--</span></p>
+                <p><strong>Aktueller Effekt:</strong> <span id="display-effect-name">--</span></p>
+                <p><strong>Helligkeit:</strong> <span id="display-brightness">--</span> %</p>
+                <p><strong>Farbtemperatur:</strong> <span id="display-ct-value">--</span> K</p>
+                <p><strong>Farbton (Hue):</strong> <span id="display-hue-value">--</span> °</p>
+                <p><strong>Sättigung (Sat):</strong> <span id="display-sat-value">--</span> %</p>
+                <p><strong>Farbmodus:</strong> <span id="display-color-mode">--</span></p>
+                <button id="refreshButton">Status aktualisieren</button>
+            </div>
 
+            <hr>
+            
+            <div class="toggle-switch">
+                <label for="onOffSwitch"><h2>Gerät AN/AUS</h2></label>
+                <label class="switch">
+                    <input type="checkbox" id="onOffSwitch">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            
+            <hr>
+
+            <h2>Effekt auswählen</h2>
+            <label for="effectSelect">Verfügbare Szenen:</label>
+            <select id="effectSelect">
+                <option value="">-- Lade Effekte... --</option>
+            </select>
+            
+            <hr>
+            
+            <h2>Farbe steuern (Hue/Saturation)</h2>
+            
+            <div class="indicator-label">
+                <label for="hueRange">Farbton (Hue):</label>
+                <span id="hueValue">0 °</span>
+            </div>
+            <input type="range" id="hueRange" min="0" max="360" value="0" step="1">
+            <div class="indicator-bar" id="hueIndicator"></div>
+
+            <div class="indicator-label">
+                <label for="satRange">Sättigung (Saturation):</label>
+                <span id="satValue">100 %</span>
+            </div>
+            <input type="range" id="satRange" min="0" max="100" value="100" step="1">
+            <div class="indicator-bar" id="satIndicator"></div>
+            
+            <hr>
+            
+            <h2>Helligkeit steuern</h2>
+            <div class="indicator-label">
+                <label for="brightnessRange">Helligkeit (Prozent):</label>
+                <span id="brightnessValue">50 %</span>
+            </div>
+            <input type="range" id="brightnessRange" min="0" max="100" value="50" step="1">
+            <div class="indicator-bar" id="brightnessIndicator"></div>
+            
+            <hr>
+            
+            <h2>Farbtemperatur steuern</h2>
+            <div class="indicator-label">
+                <label for="ctRange">Farbtemperatur (Kelvin):</label>
+                <span id="ctValue">4000 K</span>
+            </div>
+            <input type="range" id="ctRange" min="1200" max="6500" value="4000" step="100">
+            <div class="indicator-bar" id="ctIndicator"></div>
+        </div>
+        
         <div id="statusMessage"></div>
     </div>
 
