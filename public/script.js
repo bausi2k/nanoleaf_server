@@ -107,28 +107,39 @@ function initializeConfig() {
 
 /**
  * @function discoverHost
- * @description NEU: Startet mDNS Discovery über das Backend.
+ * @description Startet mDNS Discovery über das Backend und speichert den Host.
  */
 async function discoverHost() {
     discoverButton.disabled = true;
-    hostInput.value = 'Suche Gerät...';
+    currentHostDisplay.textContent = 'Suche läuft...';
+    currentHostDisplay.style.color = 'orange';
+    hostInput.value = '';
     
     try {
+        // 1. API-Call an die Backend-Route für Discovery
         const response = await fetch('/api/discover-host');
         const result = await response.json();
         
         if (response.ok && result.success) {
             const host = result.host;
+            
+            // 2. Ergebnis in das Eingabefeld und Local Storage speichern
             hostInput.value = host;
-            setHostConfiguration(); // Speichert und prüft den gefundenen Host
+            
+            // 3. Speichern und UI aktualisieren (durch Aufruf der existierenden Funktion)
+            setHostConfiguration(); 
+            
             currentHostDisplay.style.color = 'green';
             currentHostDisplay.textContent = `${host} (gefunden!)`;
         } else {
+            // 4. Fehlerbehandlung bei fehlgeschlagener Discovery
+            const errorMessage = result.details || result.error || 'Gerät nicht gefunden (Timeout).';
             hostInput.value = '';
-            currentHostDisplay.textContent = '❌ Suche fehlgeschlagen.';
+            currentHostDisplay.textContent = `❌ Suche fehlgeschlagen: ${errorMessage}`;
             currentHostDisplay.style.color = 'red';
         }
     } catch (error) {
+        // 5. Kritische Netzwerkfehler
         hostInput.value = '';
         currentHostDisplay.textContent = `❌ Serverfehler: ${error.message}`;
         currentHostDisplay.style.color = 'red';
@@ -136,7 +147,6 @@ async function discoverHost() {
         discoverButton.disabled = false;
     }
 }
-
 /**
  * @function setHostConfiguration
  * @description Speichert den eingegebenen Host und prüft die Konnektivität.
