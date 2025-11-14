@@ -296,3 +296,4 @@ app.listen(port, () => {
     console.log(`✅ Server läuft auf http://localhost:${port}`);
     console.log('Nanoleaf Host wird dynamisch per Header übermittelt.');
 });
+//END
