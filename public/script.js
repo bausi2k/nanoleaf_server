@@ -1,7 +1,8 @@
 // public/script.js
 
-// Konstante für Local Storage Key
+// Konstanten für Local Storage Keys
 const NANOLEAF_TOKEN_KEY = 'nanoleaf_auth_token';
+const NANOLEAF_HOST_KEY = 'nanoleaf_host';
 
 // Konstanten für die HTML-Elemente
 const ctRange = document.getElementById('ctRange');
@@ -16,7 +17,13 @@ const satValueDisplay = document.getElementById('satValue');
 const effectSelect = document.getElementById('effectSelect'); 
 const statusMessage = document.getElementById('statusMessage');
 
-// NEU: AUTH & Control Elemente
+// HOST & AUTH Elemente
+const configSection = document.getElementById('configSection');
+const hostInput = document.getElementById('hostInput');
+const setHostButton = document.getElementById('setHostButton');
+const discoverButton = document.getElementById('discoverButton'); // NEU
+const currentHostDisplay = document.getElementById('currentHostDisplay');
+
 const authSection = document.getElementById('authSection');
 const authHr = document.getElementById('authHr');
 const controlContent = document.getElementById('controlContent');
@@ -45,8 +52,8 @@ const DEBOUNCE_DELAY_MS = 150;
 
 // Initialisierung und Event Listener
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialen Token laden (falls vorhanden) und Backend informieren
-    checkAndSetupToken();
+    // Initialen Host und Token laden
+    initializeConfig();
 
     refreshButton.addEventListener('click', getAndVisualizeState);
 
@@ -58,7 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
     satRange.addEventListener('input', handleSatSliderInput);
     effectSelect.addEventListener('change', handleEffectSelectChange);
     
-    // AUTH Event
+    // HOST & AUTH Events
+    setHostButton.addEventListener('click', setHostConfiguration);
+    discoverButton.addEventListener('click', discoverHost); // NEU
     generateTokenButton.addEventListener('click', generateToken);
 
     // Initialen Status und Effektliste beim Laden abrufen
@@ -67,52 +76,125 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // **********************************************
-// ** AUTH & PERSISTENCE FUNKTIONEN (NEU) **
+// ** HOST & TOKEN MANAGEMENT **
 // **********************************************
 
 /**
- * @function setTokenInLocalStorage
- * @description Speichert den Token im Browser Local Storage.
+ * @function initializeConfig
+ * @description Lädt Host und Token aus Local Storage und initialisiert die UI.
  */
-function setTokenInLocalStorage(token) {
-    localStorage.setItem(NANOLEAF_TOKEN_KEY, token);
-}
-
-/**
- * @function checkAndSetupToken
- * @description Versucht, den Token aus Local Storage zu laden und sendet ihn ans Backend.
- */
-function checkAndSetupToken() {
-    const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
+function initializeConfig() {
+    const storedHost = localStorage.getItem(NANOLEAF_HOST_KEY);
+    const storedToken = localStorage.getItem(NANOLEAF_TOKEN_KEY);
     
-    if (token) {
-        // Token gefunden: UI für Steuerung anzeigen
-        showControlUI(true);
-        // Sende Token an Backend (dies ist eine neue Route, die wir im Backend NICHT gebaut haben,
-        // da das Backend den Token des Clients nicht braucht. Wir überspringen diesen Schritt,
-        // da das Backend nur den Token aus .env beim Start nutzt oder einen neuen generiert.
-        // Wenn der Backend-Server neu startet, muss der Token aus der .env stammen, oder neu generiert werden.
-        // Da das Backend den Token des Clients NICHT speichert (Sicherheitsrisiko), ist das primäre Ziel des Frontends,
-        // bei einem 401/Fehler den Auth-Screen zu zeigen, falls der Token aus Local Storage abgelaufen ist.
+    // Host-Eingabefeld initialisieren
+    if (storedHost) {
+        hostInput.value = storedHost;
+        currentHostDisplay.textContent = storedHost;
     } else {
-        // Kein Token gefunden: Auth UI anzeigen
-        showControlUI(false);
+        hostInput.value = ''; 
+    }
+    
+    // UI basierend auf Host und Token steuern
+    if (storedHost && storedToken) {
+        showControlUI(true);
+    } else if (storedHost) {
+        showAuthUI(true);
+    } else {
+        showAuthUI(false);
     }
 }
 
 /**
+ * @function discoverHost
+ * @description NEU: Startet mDNS Discovery über das Backend.
+ */
+async function discoverHost() {
+    discoverButton.disabled = true;
+    hostInput.value = 'Suche Gerät...';
+    
+    try {
+        const response = await fetch('/api/discover-host');
+        const result = await response.json();
+        
+        if (response.ok && result.success) {
+            const host = result.host;
+            hostInput.value = host;
+            setHostConfiguration(); // Speichert und prüft den gefundenen Host
+            currentHostDisplay.style.color = 'green';
+            currentHostDisplay.textContent = `${host} (gefunden!)`;
+        } else {
+            hostInput.value = '';
+            currentHostDisplay.textContent = '❌ Suche fehlgeschlagen.';
+            currentHostDisplay.style.color = 'red';
+        }
+    } catch (error) {
+        hostInput.value = '';
+        currentHostDisplay.textContent = `❌ Serverfehler: ${error.message}`;
+        currentHostDisplay.style.color = 'red';
+    } finally {
+        discoverButton.disabled = false;
+    }
+}
+
+/**
+ * @function setHostConfiguration
+ * @description Speichert den eingegebenen Host und prüft die Konnektivität.
+ */
+function setHostConfiguration() {
+    const host = hostInput.value.trim();
+    if (!host || !host.includes(':')) {
+        currentHostDisplay.textContent = 'Ungültige IP:Port-Angabe!';
+        currentHostDisplay.style.color = 'red';
+        return;
+    }
+    
+    // Host speichern
+    localStorage.setItem(NANOLEAF_HOST_KEY, host);
+    currentHostDisplay.textContent = host;
+    currentHostDisplay.style.color = 'green';
+    
+    // Token entfernen, um Neuauthentifizierung zu erzwingen
+    localStorage.removeItem(NANOLEAF_TOKEN_KEY); 
+    
+    // UI aktualisieren: Host ist jetzt da, Token fehlt
+    showAuthUI(true);
+    
+    // Versuche, Status abzurufen, um zu prüfen (fängt Fehler 401/404 ab)
+    getAndVisualizeState();
+}
+
+/**
+ * @function showAuthUI
+ * @description Steuert die Sichtbarkeit der Auth-Sektionen.
+ */
+function showAuthUI(isHostConfigured) {
+    if (isHostConfigured) {
+        authSection.classList.remove('hidden');
+        authHr.classList.remove('hidden');
+        controlContent.classList.add('hidden');
+        configSection.style.border = '1px solid orange'; 
+    } else {
+        authSection.classList.add('hidden');
+        authHr.classList.add('hidden');
+        controlContent.classList.add('hidden');
+        configSection.style.border = '1px solid red';
+    }
+}
+
+
+/**
  * @function showControlUI
- * @description Steuert die Sichtbarkeit der Auth- und Control-Sektionen.
+ * @description Steuert die Sichtbarkeit der Control-Sektion.
  */
 function showControlUI(isTokenValid) {
     if (isTokenValid) {
         authSection.classList.add('hidden');
         authHr.classList.add('hidden');
         controlContent.classList.remove('hidden');
+        configSection.style.border = '1px solid green';
     } else {
-        authSection.classList.remove('hidden');
-        authHr.classList.remove('hidden');
-        controlContent.classList.add('hidden');
+        showAuthUI(true); // Fallback: Host ist konfiguriert, aber Token fehlt/ist ungültig
     }
 }
 
@@ -122,14 +204,21 @@ function showControlUI(isTokenValid) {
 // **********************************************
 
 async function generateToken() {
+    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
+    if (!host) {
+        generatedTokenMsg.textContent = '🚨 Bitte zuerst Host konfigurieren.';
+        generatedTokenMsg.style.color = 'red';
+        return;
+    }
+    
     generatedTokenMsg.textContent = 'Sende Anfrage... Gerät muss blinken.';
     generatedTokenDiv.style.display = 'none';
     generateTokenButton.disabled = true;
 
     try {
-        // Schickt Request an Backend, welches den Request an Nanoleaf sendet
         const response = await fetch('/api/add-user', {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'X-Nanoleaf-Host': host } // Sende Host an Backend
         });
         
         const result = await response.json();
@@ -138,7 +227,7 @@ async function generateToken() {
             const newToken = result.auth_token;
             
             // 1. Token im Local Storage speichern (Persistenz)
-            setTokenInLocalStorage(newToken);
+            localStorage.setItem(NANOLEAF_TOKEN_KEY, newToken);
 
             // 2. UI Status aktualisieren
             generatedTokenMsg.textContent = '✅ Token erfolgreich generiert und gespeichert!';
@@ -146,17 +235,15 @@ async function generateToken() {
             generatedTokenDiv.textContent = `Neuer Token: ${newToken}`;
             generatedTokenDiv.style.display = 'block';
             
-            // 3. Auf Steuerung umschalten
+            // 3. Auf Steuerung umschalten und Daten neu laden
             showControlUI(true);
-
-            // 4. Daten neu laden (Effektliste, Status)
             loadEffects();
             getAndVisualizeState();
             
         } else {
             generatedTokenMsg.textContent = `❌ Fehler: ${result.details || result.error || 'Unbekannter Fehler'}. Ist das Pairing-Fenster offen?`;
             generatedTokenMsg.style.color = 'red';
-            showControlUI(false); // Zeige Auth, falls Fehler
+            showControlUI(false); 
         }
     } catch (error) {
         generatedTokenMsg.textContent = `🚨 Kommunikationsfehler zum Server: ${error.message}`;
@@ -172,9 +259,6 @@ async function generateToken() {
 // ** API CALLS (KONTROLLE & FEHLERBEHANDLUNG) **
 // **********************************************
 
-// Alle API-Call-Funktionen (setCT, setBrightness, etc.) müssen bei einem 401/Fehler
-// auf die Auth-Seite umschalten. Wir fügen eine zentrale Fehlerbehandlung hinzu.
-
 async function handleApiError(response, errorMessage) {
     if (response && response.status === 401) {
         // Token ist ungültig oder abgelaufen -> Token im LS löschen und Auth UI zeigen
@@ -184,24 +268,48 @@ async function handleApiError(response, errorMessage) {
         statusMessage.className = 'error';
         return true; 
     }
+    if (response && response.status === 404) {
+        // Gerät nicht gefunden oder falsche URL -> Host prüfen
+        statusMessage.textContent = '🚨 Host/Gerät nicht gefunden (404). Bitte Host prüfen.';
+        statusMessage.className = 'error';
+        return true; 
+    }
+    // Konfigurationsfehler vom Backend (z.B. Host fehlt)
+    if (errorMessage && errorMessage.includes('Host fehlt')) {
+        statusMessage.textContent = '🚨 Konfigurationsfehler. Bitte Host konfigurieren.';
+        statusMessage.className = 'error';
+        showAuthUI(false);
+        return true;
+    }
     return false;
 }
 
 // Hilfsfunktion zum Senden von Daten an das Backend
 async function sendDataToBackend(endpoint, data, successMsg) {
+    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
+    const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
+    
+    if (!host || !token) {
+        showControlUI(false);
+        return false;
+    }
+    
     statusMessage.textContent = `Sende Anfrage an ${endpoint}...`;
     statusMessage.className = '';
 
     try {
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Nanoleaf-Host': host // Sende Host
+            },
             body: JSON.stringify(data)
         });
         
         const result = await response.json();
 
-        if (await handleApiError(response, result)) {
+        if (await handleApiError(response, result.details)) {
             return false;
         }
 
@@ -215,33 +323,38 @@ async function sendDataToBackend(endpoint, data, successMsg) {
             return false;
         }
     } catch (error) {
-        statusMessage.textContent = `🚨 Kommunikationsfehler zum Server: ${error.message}`;
+        statusMessage.textContent = `🚨 Kommunikationsfehler: ${error.message}. Ist der Server (Node/Docker) gestartet?`;
         statusMessage.className = 'error';
         return false;
     }
 }
-
 
 // **********************************************
 // ** GET AND VISUALIZE STATE **
 // **********************************************
 
 async function getAndVisualizeState() {
-    // Wenn Control UI ausgeblendet ist, nicht versuchen, Status zu laden
-    if (controlContent.classList.contains('hidden')) {
+    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
+    const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
+    
+    // Wenn Host oder Token fehlen, zeige die Konfigurations-UI
+    if (!host || !token) {
+        showControlUI(false);
         return;
     }
     
     // Ladezustand anzeigen
     displayOnState.textContent = 'Lade...'; 
     displayEffectName.textContent = 'Lade...'; 
-    // ... (restliche Ladeanzeigen)
+    statusMessage.textContent = ''; 
 
     try {
-        const response = await fetch('/api/get-state');
+        const response = await fetch('/api/get-state', {
+            headers: { 'X-Nanoleaf-Host': host } // Sende Host
+        });
         const data = await response.json();
         
-        if (await handleApiError(response, data)) {
+        if (await handleApiError(response, data.details)) {
             return;
         }
 
@@ -269,14 +382,13 @@ async function getAndVisualizeState() {
             hue: state.hue.value,
             sat: state.sat.value
         };
-        // ... (Synchronisierung der Slider/Anzeigen)
         displayBrightness.textContent = currentValues.brightness;
         brightnessRange.value = currentValues.brightness;
         brightnessValueDisplay.textContent = `${currentValues.brightness} %`;
         
         displayCTValue.textContent = currentValues.ct;
         ctRange.value = Math.round(currentValues.ct / 100) * 100;
-        ctValueDisplay.textContent = `${ctRange.value} K`;
+        ctValueDisplay.textContent = `${currentValues.ct} K`;
 
         displayHueValue.textContent = currentValues.hue;
         hueRange.value = currentValues.hue;
@@ -297,142 +409,56 @@ async function getAndVisualizeState() {
     } catch (error) {
         statusMessage.textContent = `🚨 Fehler beim Abrufen des Gerätestatus: ${error.message}`;
         statusMessage.className = 'error';
-        if (error.message.includes('API-Token fehlt')) {
-            showControlUI(false); // Zeige Auth UI
-        }
     }
 }
 
-// ... (Restliche Funktionen zur Steuerung verwenden jetzt sendDataToBackend) ...
-
-// **********************************************
-// ** SLIDER & SELECT HANDLER **
-// **********************************************
-
-// Debounce Logik (unverändert)
-
-function debounce(func, delay) {
-    let timeoutId;
-    return function(value) {
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
-        timeoutId = setTimeout(() => {
-            func(value);
-        }, delay);
-    };
-}
-
-const debouncedSetCt = debounce(setColourTemperature, DEBOUNCE_DELAY_MS);
-const debouncedSetBrightness = debounce(setBrightness, DEBOUNCE_DELAY_MS);
-const debouncedSetHue = debounce(setHue, DEBOUNCE_DELAY_MS);
-const debouncedSetSat = debounce(setSaturation, DEBOUNCE_DELAY_MS);
-
-
-// Event Handler verwenden debounced Funktionen (unverändert)
-function handleCtSliderInput() {
-    const ctValue = ctRange.value;
-    ctValueDisplay.textContent = `${ctValue} K`;
-    debouncedSetCt(ctValue);
-    updateVisualIndicators(getVisualStateFromSliders());
-}
-
-function handleBrightnessSliderInput() {
-    const brightnessValue = brightnessRange.value;
-    brightnessValueDisplay.textContent = `${brightnessValue} %`;
-    debouncedSetBrightness(brightnessValue);
-    updateVisualIndicators(getVisualStateFromSliders());
-}
-
-function handleHueSliderInput() {
-    const hueValue = hueRange.value;
-    hueValueDisplay.textContent = `${hueValue} °`;
-    debouncedSetHue(hueValue);
-    updateVisualIndicators(getVisualStateFromSliders());
-}
-
-function handleSatSliderInput() {
-    const satValue = satRange.value;
-    satValueDisplay.textContent = `${satValue} %`;
-    debouncedSetSat(satValue);
-    updateVisualIndicators(getVisualStateFromSliders());
-}
-
-function handleOnOffSwitchChange() {
-    const isOn = onOffSwitch.checked;
-    setOnState(isOn);
-}
-
-function handleEffectSelectChange() {
-    const effectName = effectSelect.value;
-    if (effectName) {
-        selectEffect(effectName);
-    }
-}
-
-
-// **********************************************
-// ** API SETTER (VERWENDEN sendDataToBackend) **
-// **********************************************
-
+// ... (Restliche Setter und Visualisierungsfunktionen bleiben unverändert) ...
 async function setColourTemperature(ctValue) {
     const success = await sendDataToBackend('/api/set-ct', { ct: ctValue }, `CT erfolgreich auf ${ctValue} K gesetzt.`);
-    if (success) {
-        updateVisualIndicators(getVisualStateFromSliders());
-    }
+    if (success) { updateVisualIndicators(getVisualStateFromSliders()); }
 }
 
 async function setBrightness(brightnessValue) {
     const success = await sendDataToBackend('/api/set-brightness', { brightness: brightnessValue }, `Helligkeit erfolgreich auf ${brightnessValue} % gesetzt.`);
-    if (success) {
-        updateVisualIndicators(getVisualStateFromSliders());
-    }
+    if (success) { updateVisualIndicators(getVisualStateFromSliders()); }
 }
 
 async function setOnState(onState) {
     const success = await sendDataToBackend('/api/set-on-state', { onState: onState }, `Gerät erfolgreich ${onState ? 'EINGESCHALTET' : 'AUSGESCHALTET'}.`);
-    if (success) {
-        getAndVisualizeState(); 
-    }
+    if (success) { getAndVisualizeState(); }
 }
 
 async function setHue(hueValue) {
     const success = await sendDataToBackend('/api/set-hue', { hue: hueValue }, `Hue erfolgreich auf ${hueValue} ° gesetzt.`);
-    if (success) {
-        updateVisualIndicators(getVisualStateFromSliders());
-    }
+    if (success) { updateVisualIndicators(getVisualStateFromSliders()); }
 }
 
 async function setSaturation(satValue) {
     const success = await sendDataToBackend('/api/set-sat', { sat: satValue }, `Saturation erfolgreich auf ${satValue} % gesetzt.`);
-    if (success) {
-        updateVisualIndicators(getVisualStateFromSliders());
-    }
+    if (success) { updateVisualIndicators(getVisualStateFromSliders()); }
 }
 
 async function selectEffect(effectName) {
     const success = await sendDataToBackend('/api/select-effect', { effectName: effectName }, `Effekt "${effectName}" erfolgreich aktiviert.`);
-    if (success) {
-        getAndVisualizeState(); 
-    }
+    if (success) { getAndVisualizeState(); }
 }
 
 async function loadEffects() {
-    // Wenn Control UI ausgeblendet ist, nicht versuchen, Effekte zu laden
-    if (controlContent.classList.contains('hidden')) {
-        effectSelect.innerHTML = '<option value="">-- Token benötigt --</option>';
+    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
+    const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
+    
+    if (!host || !token) {
+        effectSelect.innerHTML = '<option value="">-- Token/Host fehlt --</option>';
         return;
     }
     
     effectSelect.innerHTML = '<option value="">-- Lade Effekte... --</option>';
 
     try {
-        const response = await fetch('/api/get-effects-list');
+        const response = await fetch('/api/get-effects-list', { headers: { 'X-Nanoleaf-Host': host } });
         const effectsList = await response.json();
         
-        if (await handleApiError(response, effectsList)) {
-            return;
-        }
+        if (await handleApiError(response, effectsList)) { return; }
 
         if (!response.ok) {
             throw new Error(`Backend-Fehler beim Laden der Effekte: ${effectsList.error}`);
@@ -457,7 +483,6 @@ async function loadEffects() {
     }
 }
 
-// ... (Restliche Visualisierungsfunktionen wie hsbToRgb, updateVisualIndicators, etc. bleiben unverändert)
 function hsbToRgb(h, s, v) {
     s /= 100; v /= 100; let r, g, b;
     if (s === 0) { r = g = b = v; } else {

@@ -1,17 +1,11 @@
-# docker-compose.yml
+# docker-compose.yml (unverändert, Port-Mapping ist implizit 8667:8667 durch host mode)
 version: '3.8'
 
 services:
   nanoleaf-controller:
     build: .
     container_name: nanoleaf-controller
-    # WICHTIG: Verwende host network mode für mDNS Discovery
-    # Dies erlaubt dem Container, mDNS-Anfragen im lokalen Netzwerk zu senden.
-    network_mode: host
-    
-    # Lade Umgebungsvariablen (NANOLEAF_TOKEN) aus der .env-Datei im Host-System
+    network_mode: host # WICHTIG: Erlaubt mDNS
     env_file:
       - .env
-
-    # Starte den Container neu, wenn er stoppt
     restart: unless-stopped
