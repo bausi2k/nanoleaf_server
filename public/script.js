@@ -2,7 +2,6 @@
 
 // Konstanten für Local Storage Keys
 const NANOLEAF_TOKEN_KEY = 'nanoleaf_auth_token';
-const NANOLEAF_HOST_KEY = 'nanoleaf_host';
 
 // Konstanten für die HTML-Elemente
 const ctRange = document.getElementById('ctRange');
@@ -17,13 +16,7 @@ const satValueDisplay = document.getElementById('satValue');
 const effectSelect = document.getElementById('effectSelect'); 
 const statusMessage = document.getElementById('statusMessage');
 
-// HOST & AUTH Elemente
-const configSection = document.getElementById('configSection');
-const hostInput = document.getElementById('hostInput');
-const setHostButton = document.getElementById('setHostButton');
-const discoverButton = document.getElementById('discoverButton'); // NEU
-const currentHostDisplay = document.getElementById('currentHostDisplay');
-
+// AUTH Elemente
 const authSection = document.getElementById('authSection');
 const authHr = document.getElementById('authHr');
 const controlContent = document.getElementById('controlContent');
@@ -52,8 +45,8 @@ const DEBOUNCE_DELAY_MS = 150;
 
 // Initialisierung und Event Listener
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialen Host und Token laden
-    initializeConfig();
+    // Token prüfen und UI initialisieren
+    checkAndSetupToken();
 
     refreshButton.addEventListener('click', getAndVisualizeState);
 
@@ -65,9 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     satRange.addEventListener('input', handleSatSliderInput);
     effectSelect.addEventListener('change', handleEffectSelectChange);
     
-    // HOST & AUTH Events
-    setHostButton.addEventListener('click', setHostConfiguration);
-    discoverButton.addEventListener('click', discoverHost); // NEU
+    // AUTH Event
     generateTokenButton.addEventListener('click', generateToken);
 
     // Initialen Status und Effektliste beim Laden abrufen
@@ -76,119 +67,21 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // **********************************************
-// ** HOST & TOKEN MANAGEMENT **
+// ** AUTH & PERSISTENCE FUNKTIONEN **
 // **********************************************
 
 /**
- * @function initializeConfig
- * @description Lädt Host und Token aus Local Storage und initialisiert die UI.
+ * @function checkAndSetupToken
+ * @description Lädt Token aus Local Storage und initialisiert die UI.
  */
-function initializeConfig() {
-    const storedHost = localStorage.getItem(NANOLEAF_HOST_KEY);
+function checkAndSetupToken() {
     const storedToken = localStorage.getItem(NANOLEAF_TOKEN_KEY);
     
-    // Host-Eingabefeld initialisieren
-    if (storedHost) {
-        hostInput.value = storedHost;
-        currentHostDisplay.textContent = storedHost;
-    } else {
-        hostInput.value = ''; 
-    }
-    
-    // UI basierend auf Host und Token steuern
-    if (storedHost && storedToken) {
+    // UI basierend auf Token steuern
+    if (storedToken) {
         showControlUI(true);
-    } else if (storedHost) {
-        showAuthUI(true);
     } else {
-        showAuthUI(false);
-    }
-}
-
-/**
- * @function discoverHost
- * @description Startet mDNS Discovery über das Backend und speichert den Host.
- */
-async function discoverHost() {
-    discoverButton.disabled = true;
-    currentHostDisplay.textContent = 'Suche läuft...';
-    currentHostDisplay.style.color = 'orange';
-    hostInput.value = '';
-    
-    try {
-        // 1. API-Call an die Backend-Route für Discovery
-        const response = await fetch('/api/discover-host');
-        const result = await response.json();
-        
-        if (response.ok && result.success) {
-            const host = result.host;
-            
-            // 2. Ergebnis in das Eingabefeld und Local Storage speichern
-            hostInput.value = host;
-            
-            // 3. Speichern und UI aktualisieren (durch Aufruf der existierenden Funktion)
-            setHostConfiguration(); 
-            
-            currentHostDisplay.style.color = 'green';
-            currentHostDisplay.textContent = `${host} (gefunden!)`;
-        } else {
-            // 4. Fehlerbehandlung bei fehlgeschlagener Discovery
-            const errorMessage = result.details || result.error || 'Gerät nicht gefunden (Timeout).';
-            hostInput.value = '';
-            currentHostDisplay.textContent = `❌ Suche fehlgeschlagen: ${errorMessage}`;
-            currentHostDisplay.style.color = 'red';
-        }
-    } catch (error) {
-        // 5. Kritische Netzwerkfehler
-        hostInput.value = '';
-        currentHostDisplay.textContent = `❌ Serverfehler: ${error.message}`;
-        currentHostDisplay.style.color = 'red';
-    } finally {
-        discoverButton.disabled = false;
-    }
-}
-/**
- * @function setHostConfiguration
- * @description Speichert den eingegebenen Host und prüft die Konnektivität.
- */
-function setHostConfiguration() {
-    const host = hostInput.value.trim();
-    if (!host || !host.includes(':')) {
-        currentHostDisplay.textContent = 'Ungültige IP:Port-Angabe!';
-        currentHostDisplay.style.color = 'red';
-        return;
-    }
-    
-    // Host speichern
-    localStorage.setItem(NANOLEAF_HOST_KEY, host);
-    currentHostDisplay.textContent = host;
-    currentHostDisplay.style.color = 'green';
-    
-    // Token entfernen, um Neuauthentifizierung zu erzwingen
-    localStorage.removeItem(NANOLEAF_TOKEN_KEY); 
-    
-    // UI aktualisieren: Host ist jetzt da, Token fehlt
-    showAuthUI(true);
-    
-    // Versuche, Status abzurufen, um zu prüfen (fängt Fehler 401/404 ab)
-    getAndVisualizeState();
-}
-
-/**
- * @function showAuthUI
- * @description Steuert die Sichtbarkeit der Auth-Sektionen.
- */
-function showAuthUI(isHostConfigured) {
-    if (isHostConfigured) {
-        authSection.classList.remove('hidden');
-        authHr.classList.remove('hidden');
-        controlContent.classList.add('hidden');
-        configSection.style.border = '1px solid orange'; 
-    } else {
-        authSection.classList.add('hidden');
-        authHr.classList.add('hidden');
-        controlContent.classList.add('hidden');
-        configSection.style.border = '1px solid red';
+        showControlUI(false);
     }
 }
 
@@ -202,9 +95,10 @@ function showControlUI(isTokenValid) {
         authSection.classList.add('hidden');
         authHr.classList.add('hidden');
         controlContent.classList.remove('hidden');
-        configSection.style.border = '1px solid green';
     } else {
-        showAuthUI(true); // Fallback: Host ist konfiguriert, aber Token fehlt/ist ungültig
+        authSection.classList.remove('hidden');
+        authHr.classList.remove('hidden');
+        controlContent.classList.add('hidden');
     }
 }
 
@@ -214,21 +108,14 @@ function showControlUI(isTokenValid) {
 // **********************************************
 
 async function generateToken() {
-    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
-    if (!host) {
-        generatedTokenMsg.textContent = '🚨 Bitte zuerst Host konfigurieren.';
-        generatedTokenMsg.style.color = 'red';
-        return;
-    }
-    
     generatedTokenMsg.textContent = 'Sende Anfrage... Gerät muss blinken.';
     generatedTokenDiv.style.display = 'none';
     generateTokenButton.disabled = true;
 
     try {
+        // Backend fragt die im Server definierte IP ab
         const response = await fetch('/api/add-user', {
-            method: 'POST',
-            headers: { 'X-Nanoleaf-Host': host } // Sende Host an Backend
+            method: 'POST'
         });
         
         const result = await response.json();
@@ -278,17 +165,11 @@ async function handleApiError(response, errorMessage) {
         statusMessage.className = 'error';
         return true; 
     }
-    if (response && response.status === 404) {
-        // Gerät nicht gefunden oder falsche URL -> Host prüfen
-        statusMessage.textContent = '🚨 Host/Gerät nicht gefunden (404). Bitte Host prüfen.';
+    // Konfigurationsfehler vom Backend (z.B. Host/Token fehlt)
+    if (errorMessage && errorMessage.includes('Konfigurationsfehler')) {
+        statusMessage.textContent = '🚨 Server-Konfiguration unvollständig (.env prüfen).';
         statusMessage.className = 'error';
-        return true; 
-    }
-    // Konfigurationsfehler vom Backend (z.B. Host fehlt)
-    if (errorMessage && errorMessage.includes('Host fehlt')) {
-        statusMessage.textContent = '🚨 Konfigurationsfehler. Bitte Host konfigurieren.';
-        statusMessage.className = 'error';
-        showAuthUI(false);
+        showControlUI(false);
         return true;
     }
     return false;
@@ -296,10 +177,9 @@ async function handleApiError(response, errorMessage) {
 
 // Hilfsfunktion zum Senden von Daten an das Backend
 async function sendDataToBackend(endpoint, data, successMsg) {
-    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
     const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
     
-    if (!host || !token) {
+    if (!token) {
         showControlUI(false);
         return false;
     }
@@ -308,11 +188,12 @@ async function sendDataToBackend(endpoint, data, successMsg) {
     statusMessage.className = '';
 
     try {
+        // Füge Token Header hinzu, der im Backend verwendet wird, um den Aufruf zu autorisieren
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'X-Nanoleaf-Host': host // Sende Host
+                'X-Nanoleaf-Token-Client': token // 🚨 Füge Token hinzu
             },
             body: JSON.stringify(data)
         });
@@ -344,11 +225,9 @@ async function sendDataToBackend(endpoint, data, successMsg) {
 // **********************************************
 
 async function getAndVisualizeState() {
-    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
     const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
     
-    // Wenn Host oder Token fehlen, zeige die Konfigurations-UI
-    if (!host || !token) {
+    if (!token) {
         showControlUI(false);
         return;
     }
@@ -360,7 +239,7 @@ async function getAndVisualizeState() {
 
     try {
         const response = await fetch('/api/get-state', {
-            headers: { 'X-Nanoleaf-Host': host } // Sende Host
+             headers: { 'X-Nanoleaf-Token-Client': token } // Sende Token
         });
         const data = await response.json();
         
@@ -422,7 +301,8 @@ async function getAndVisualizeState() {
     }
 }
 
-// ... (Restliche Setter und Visualisierungsfunktionen bleiben unverändert) ...
+// --- Restliche Funktionen verwenden jetzt sendDataToBackend ---
+
 async function setColourTemperature(ctValue) {
     const success = await sendDataToBackend('/api/set-ct', { ct: ctValue }, `CT erfolgreich auf ${ctValue} K gesetzt.`);
     if (success) { updateVisualIndicators(getVisualStateFromSliders()); }
@@ -454,18 +334,17 @@ async function selectEffect(effectName) {
 }
 
 async function loadEffects() {
-    const host = localStorage.getItem(NANOLEAF_HOST_KEY);
     const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
     
-    if (!host || !token) {
-        effectSelect.innerHTML = '<option value="">-- Token/Host fehlt --</option>';
+    if (!token) {
+        effectSelect.innerHTML = '<option value="">-- Token fehlt --</option>';
         return;
     }
     
     effectSelect.innerHTML = '<option value="">-- Lade Effekte... --</option>';
 
     try {
-        const response = await fetch('/api/get-effects-list', { headers: { 'X-Nanoleaf-Host': host } });
+        const response = await fetch('/api/get-effects-list', { headers: { 'X-Nanoleaf-Token-Client': token } });
         const effectsList = await response.json();
         
         if (await handleApiError(response, effectsList)) { return; }
@@ -493,6 +372,7 @@ async function loadEffects() {
     }
 }
 
+// --- VISUALISIERUNG UND HELFER ---
 function hsbToRgb(h, s, v) {
     s /= 100; v /= 100; let r, g, b;
     if (s === 0) { r = g = b = v; } else {

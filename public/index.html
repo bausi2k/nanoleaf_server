@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Nanoleaf Controller</title>
     <style>
-        /* ... (CSS unverändert, Host/Auth-Sektionen bleiben für JS-Steuerung) ... */
         body { font-family: Arial, sans-serif; padding: 40px; }
         .container { max-width: 400px; margin: 0 auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
         .hidden { display: none !important; }
@@ -55,7 +54,7 @@
             border-radius: 5px;
             width: 100%;
         }
-        #generateTokenButton, #setHostButton, #discoverButton { /* NEU: Discover Button */
+        #generateTokenButton {
             background-color: #ffc107;
             color: #343a40;
             border: none;
@@ -64,14 +63,6 @@
             cursor: pointer;
             font-weight: bold;
             margin-top: 10px;
-        }
-        #hostInput {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            margin-top: 5px;
         }
         #generatedToken {
             word-break: break-all;
@@ -91,21 +82,8 @@
     <div class="container">
         <h1>💡 Nanoleaf Controller Dashboard</h1>
         
-        <div id="configSection">
-            <h2>1. Geräte-Konfiguration</h2>
-            <p id="hostStatus">Host: <span id="currentHostDisplay">Nicht konfiguriert</span></p>
-            
-            <label for="hostInput">IP-Adresse:Port (z.B. 192.168.1.50:16021)</label>
-            <input type="text" id="hostInput" placeholder="IP:Port">
-            
-            <button id="discoverButton">Gerät im Netzwerk suchen (mDNS)</button>
-            <button id="setHostButton" style="margin-top: 0;">Host speichern & prüfen</button>
-        </div>
-
-        <hr>
-
-        <div id="authSection" class="hidden">
-            <h2>2. API Authentifizierung</h2>
+        <div id="authSection">
+            <h2>API Authentifizierung benötigt</h2>
             <p>1. Halten Sie den ON/OFF-Knopf 5-7s gedrückt.</p>
             <p>2. Klicken Sie auf den Button.</p>
             <button id="generateTokenButton">Token generieren / API aktivieren</button>
