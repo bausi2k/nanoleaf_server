@@ -1,8 +1,5 @@
 // public/script.js
 
-// Konstanten für Local Storage Keys
-const NANOLEAF_TOKEN_KEY = 'nanoleaf_auth_token';
-
 // Konstanten für die HTML-Elemente
 const ctRange = document.getElementById('ctRange');
 const ctValueDisplay = document.getElementById('ctValue');
@@ -45,8 +42,8 @@ const DEBOUNCE_DELAY_MS = 150;
 
 // Initialisierung und Event Listener
 document.addEventListener('DOMContentLoaded', () => {
-    // Token prüfen und UI initialisieren
-    checkAndSetupToken();
+    // UI-Setup (Auth/Control) beim Laden
+    showControlUI(true); // Wir gehen davon aus, dass .env Token hat
 
     refreshButton.addEventListener('click', getAndVisualizeState);
 
@@ -58,44 +55,28 @@ document.addEventListener('DOMContentLoaded', () => {
     satRange.addEventListener('input', handleSatSliderInput);
     effectSelect.addEventListener('change', handleEffectSelectChange);
     
-    // AUTH Event
-    generateTokenButton.addEventListener('click', generateToken);
-
     // Initialen Status und Effektliste beim Laden abrufen
     loadEffects();
     getAndVisualizeState();
 });
 
 // **********************************************
-// ** AUTH & PERSISTENCE FUNKTIONEN **
+// ** UI CONTROL (VEREINFACHT) **
 // **********************************************
-
-/**
- * @function checkAndSetupToken
- * @description Lädt Token aus Local Storage und initialisiert die UI.
- */
-function checkAndSetupToken() {
-    const storedToken = localStorage.getItem(NANOLEAF_TOKEN_KEY);
-    
-    // UI basierend auf Token steuern
-    if (storedToken) {
-        showControlUI(true);
-    } else {
-        showControlUI(false);
-    }
-}
-
 
 /**
  * @function showControlUI
  * @description Steuert die Sichtbarkeit der Control-Sektion.
  */
 function showControlUI(isTokenValid) {
+    // Da wir Auth im UI entfernt haben, zeigt diese Funktion nur Fehler an,
+    // indem sie die Steuerung ausblendet.
     if (isTokenValid) {
         authSection.classList.add('hidden');
         authHr.classList.add('hidden');
         controlContent.classList.remove('hidden');
     } else {
+        // Bei Fehler (Server/Token), zeige die Auth-Meldung (die wir als Platzhalter nutzen)
         authSection.classList.remove('hidden');
         authHr.classList.remove('hidden');
         controlContent.classList.add('hidden');
@@ -104,103 +85,28 @@ function showControlUI(isTokenValid) {
 
 
 // **********************************************
-// ** AUTH GENERIERUNG **
-// **********************************************
-
-async function generateToken() {
-    generatedTokenMsg.textContent = 'Sende Anfrage... Gerät muss blinken.';
-    generatedTokenDiv.style.display = 'none';
-    generateTokenButton.disabled = true;
-
-    try {
-        // Backend fragt die im Server definierte IP ab
-        const response = await fetch('/api/add-user', {
-            method: 'POST'
-        });
-        
-        const result = await response.json();
-
-        if (response.ok) {
-            const newToken = result.auth_token;
-            
-            // 1. Token im Local Storage speichern (Persistenz)
-            localStorage.setItem(NANOLEAF_TOKEN_KEY, newToken);
-
-            // 2. UI Status aktualisieren
-            generatedTokenMsg.textContent = '✅ Token erfolgreich generiert und gespeichert!';
-            generatedTokenMsg.style.color = 'green';
-            generatedTokenDiv.textContent = `Neuer Token: ${newToken}`;
-            generatedTokenDiv.style.display = 'block';
-            
-            // 3. Auf Steuerung umschalten und Daten neu laden
-            showControlUI(true);
-            loadEffects();
-            getAndVisualizeState();
-            
-        } else {
-            generatedTokenMsg.textContent = `❌ Fehler: ${result.details || result.error || 'Unbekannter Fehler'}. Ist das Pairing-Fenster offen?`;
-            generatedTokenMsg.style.color = 'red';
-            showControlUI(false); 
-        }
-    } catch (error) {
-        generatedTokenMsg.textContent = `🚨 Kommunikationsfehler zum Server: ${error.message}`;
-        generatedTokenMsg.style.color = 'red';
-        showControlUI(false);
-    } finally {
-        generateTokenButton.disabled = false;
-    }
-}
-
-
-// **********************************************
 // ** API CALLS (KONTROLLE & FEHLERBEHANDLUNG) **
 // **********************************************
 
-async function handleApiError(response, errorMessage) {
-    if (response && response.status === 401) {
-        // Token ist ungültig oder abgelaufen -> Token im LS löschen und Auth UI zeigen
-        localStorage.removeItem(NANOLEAF_TOKEN_KEY);
-        showControlUI(false);
-        statusMessage.textContent = '🚨 Token ungültig (401). Bitte neuen Token generieren.';
-        statusMessage.className = 'error';
-        return true; 
-    }
-    // Konfigurationsfehler vom Backend (z.B. Host/Token fehlt)
-    if (errorMessage && errorMessage.includes('Konfigurationsfehler')) {
-        statusMessage.textContent = '🚨 Server-Konfiguration unvollständig (.env prüfen).';
-        statusMessage.className = 'error';
-        showControlUI(false);
-        return true;
-    }
-    return false;
-}
-
 // Hilfsfunktion zum Senden von Daten an das Backend
 async function sendDataToBackend(endpoint, data, successMsg) {
-    const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
-    
-    if (!token) {
-        showControlUI(false);
-        return false;
-    }
-    
     statusMessage.textContent = `Sende Anfrage an ${endpoint}...`;
     statusMessage.className = '';
 
     try {
-        // Füge Token Header hinzu, der im Backend verwendet wird, um den Aufruf zu autorisieren
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-Nanoleaf-Token-Client': token // 🚨 Füge Token hinzu
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
         
         const result = await response.json();
 
-        if (await handleApiError(response, result.details)) {
+        if (response.status === 401 || response.status === 500) {
+            // Bei 401 oder Backend-Fehler, zeige generischen Fehler an
+            statusMessage.textContent = `🚨 Fehler: Server/Token-Problem (${result.details || result.error || 'Unbekannt'}). .env prüfen!`;
+            statusMessage.className = 'error';
+            showControlUI(false); // Blende Steuerung aus, da Konfigurationsfehler vorliegen
             return false;
         }
 
@@ -216,6 +122,7 @@ async function sendDataToBackend(endpoint, data, successMsg) {
     } catch (error) {
         statusMessage.textContent = `🚨 Kommunikationsfehler: ${error.message}. Ist der Server (Node/Docker) gestartet?`;
         statusMessage.className = 'error';
+        showControlUI(false);
         return false;
     }
 }
@@ -225,12 +132,6 @@ async function sendDataToBackend(endpoint, data, successMsg) {
 // **********************************************
 
 async function getAndVisualizeState() {
-    const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
-    
-    if (!token) {
-        showControlUI(false);
-        return;
-    }
     
     // Ladezustand anzeigen
     displayOnState.textContent = 'Lade...'; 
@@ -238,12 +139,13 @@ async function getAndVisualizeState() {
     statusMessage.textContent = ''; 
 
     try {
-        const response = await fetch('/api/get-state', {
-             headers: { 'X-Nanoleaf-Token-Client': token } // Sende Token
-        });
+        const response = await fetch('/api/get-state');
         const data = await response.json();
         
-        if (await handleApiError(response, data.details)) {
+        if (response.status === 401 || response.status === 500) {
+            statusMessage.textContent = `🚨 Fehler: Server/Token-Problem (${data.details || data.error || 'Unbekannt'}). .env prüfen!`;
+            statusMessage.className = 'error';
+            showControlUI(false); 
             return;
         }
 
@@ -294,14 +196,79 @@ async function getAndVisualizeState() {
 
         statusMessage.textContent = '✅ Status erfolgreich aktualisiert.';
         statusMessage.className = 'success';
-        showControlUI(true); // Bestätige, dass der Token noch gültig ist
+        showControlUI(true); // Bestätige, dass die Steuerung sichtbar ist
     } catch (error) {
-        statusMessage.textContent = `🚨 Fehler beim Abrufen des Gerätestatus: ${error.message}`;
+        statusMessage.textContent = `🚨 Fehler beim Abrufen des Gerätezustands: ${error.message}`;
         statusMessage.className = 'error';
+        showControlUI(false); // Blende Steuerung bei Netzwerkfehler aus
     }
 }
 
-// --- Restliche Funktionen verwenden jetzt sendDataToBackend ---
+// **********************************************
+// ** SLIDER HANDLER UND DEBOUNCE **
+// **********************************************
+
+function debounce(func, delay) {
+    let timeoutId;
+    return function(value) {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(() => {
+            func(value);
+        }, delay);
+    };
+}
+
+const debouncedSetCt = debounce(setColourTemperature, DEBOUNCE_DELAY_MS);
+const debouncedSetBrightness = debounce(setBrightness, DEBOUNCE_DELAY_MS);
+const debouncedSetHue = debounce(setHue, DEBOUNCE_DELAY_MS);
+const debouncedSetSat = debounce(setSaturation, DEBOUNCE_DELAY_MS);
+
+function handleCtSliderInput() {
+    const ctValue = ctRange.value;
+    ctValueDisplay.textContent = `${ctValue} K`;
+    debouncedSetCt(ctValue);
+    updateVisualIndicators(getVisualStateFromSliders());
+}
+
+function handleBrightnessSliderInput() {
+    const brightnessValue = brightnessRange.value;
+    brightnessValueDisplay.textContent = `${brightnessValue} %`;
+    debouncedSetBrightness(brightnessValue);
+    updateVisualIndicators(getVisualStateFromSliders());
+}
+
+function handleHueSliderInput() {
+    const hueValue = hueRange.value;
+    hueValueDisplay.textContent = `${hueValue} °`;
+    debouncedSetHue(hueValue);
+    updateVisualIndicators(getVisualStateFromSliders());
+}
+
+function handleSatSliderInput() {
+    const satValue = satRange.value;
+    satValueDisplay.textContent = `${satValue} %`;
+    debouncedSetSat(satValue);
+    updateVisualIndicators(getVisualStateFromSliders());
+}
+
+function handleOnOffSwitchChange() {
+    const isOn = onOffSwitch.checked;
+    setOnState(isOn);
+}
+
+function handleEffectSelectChange() {
+    const effectName = effectSelect.value;
+    if (effectName) {
+        selectEffect(effectName);
+    }
+}
+
+
+// **********************************************
+// ** API SETTER UND LOADER **
+// **********************************************
 
 async function setColourTemperature(ctValue) {
     const success = await sendDataToBackend('/api/set-ct', { ct: ctValue }, `CT erfolgreich auf ${ctValue} K gesetzt.`);
@@ -334,20 +301,16 @@ async function selectEffect(effectName) {
 }
 
 async function loadEffects() {
-    const token = localStorage.getItem(NANOLEAF_TOKEN_KEY);
-    
-    if (!token) {
-        effectSelect.innerHTML = '<option value="">-- Token fehlt --</option>';
-        return;
-    }
-    
     effectSelect.innerHTML = '<option value="">-- Lade Effekte... --</option>';
 
     try {
-        const response = await fetch('/api/get-effects-list', { headers: { 'X-Nanoleaf-Token-Client': token } });
+        const response = await fetch('/api/get-effects-list');
         const effectsList = await response.json();
         
-        if (await handleApiError(response, effectsList)) { return; }
+        if (response.status === 401 || response.status === 500) {
+             effectSelect.innerHTML = '<option value="">-- Fehler --</option>';
+             return;
+        }
 
         if (!response.ok) {
             throw new Error(`Backend-Fehler beim Laden der Effekte: ${effectsList.error}`);
@@ -372,7 +335,10 @@ async function loadEffects() {
     }
 }
 
-// --- VISUALISIERUNG UND HELFER ---
+// **********************************************
+// ** VISUALISIERUNG UND HELFER **
+// **********************************************
+
 function hsbToRgb(h, s, v) {
     s /= 100; v /= 100; let r, g, b;
     if (s === 0) { r = g = b = v; } else {
@@ -389,10 +355,22 @@ function updateVisualIndicators(currentValues) {
     const h = parseInt(currentValues.hue); const s = parseInt(currentValues.sat); const b = parseInt(currentValues.brightness); const isOn = onOffSwitch.checked;
     const opacity = isOn ? 1 : 0.3;
     const color = hsbToRgb(h, s, b);
+    
+    // Saturation Indikator (Verlauf von Grau zu voller Farbe)
     satIndicator.style.background = `linear-gradient(to right, rgb(128,128,128), ${hsbToRgb(h, 100, 100)})`;
-    satIndicator.style.opacity = opacity; hueIndicator.style.background = color; hueIndicator.style.opacity = opacity;
-    const colorLow = hsbToRgb(h, s, 10); const colorHigh = hsbToRgb(h, s, 100);
-    brightnessIndicator.style.background = `linear-gradient(to right, ${colorLow}, ${colorHigh})`; brightnessIndicator.style.opacity = opacity;
+    satIndicator.style.opacity = opacity; 
+    
+    // Hue Indikator (Aktuelle HSB-Farbe des Geräts)
+    hueIndicator.style.background = color; 
+    hueIndicator.style.opacity = opacity;
+
+    // Brightness Indikator (Verlauf von Dunkel nach Hell)
+    const colorLow = hsbToRgb(h, s, 10); 
+    const colorHigh = hsbToRgb(h, s, 100);
+    brightnessIndicator.style.background = `linear-gradient(to right, ${colorLow}, ${colorHigh})`; 
+    brightnessIndicator.style.opacity = opacity;
+    
+    // CT Indikator (Verlauf ist im CSS von index.html)
     ctIndicator.style.opacity = opacity;
 }
 

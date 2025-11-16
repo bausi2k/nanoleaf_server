@@ -1,7 +1,7 @@
 {
   "name": "nanoleaf-server",
-  "version": "1.0.0",
-  "description": "",
+  "version": "1.0.0", 
+  "description": "Nanoleaf Controller via Node.js/Express",
   "main": "index.js",
   "scripts": {
     "start": "node server.js",

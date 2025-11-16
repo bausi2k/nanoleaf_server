@@ -41,11 +41,16 @@
                 #FF0000 0%, #FFFF00 17%, #00FF00 33%, 
                 #00FFFF 50%, #0000FF 67%, #FF00FF 83%, #FF0000 100%); 
         }
+        /* CT-Slider Indikator-Verlauf */
+        #ctIndicator {
+            background: linear-gradient(to right, #FFC966, #FFFFF0, #D6F0FF); 
+        }
         #ctRange {
+            /* Zeigt den Verlauf auch im Slider-Track */
             background: linear-gradient(to right, #FFC966, #FFFFF0, #D6F0FF);
         }
         
-        /* AUTH Bereich (jetzt auch für Host-Eingabe) */
+        /* AUTH Bereich */
         #authSection {
             background-color: #fff3cd;
             border: 1px solid #ffeeba;
@@ -82,7 +87,7 @@
     <div class="container">
         <h1>💡 Nanoleaf Controller Dashboard</h1>
         
-        <div id="authSection">
+        <div id="authSection" class="hidden"> 
             <h2>API Authentifizierung benötigt</h2>
             <p>1. Halten Sie den ON/OFF-Knopf 5-7s gedrückt.</p>
             <p>2. Klicken Sie auf den Button.</p>
@@ -91,9 +96,9 @@
             <div id="generatedToken" style="display: none;"></div>
         </div>
 
-        <hr id="authHr" class="hidden">
+        <hr id="authHr" class="hidden"> 
 
-        <div id="controlContent" class="hidden"> 
+        <div id="controlContent"> 
             <div id="deviceState">
                 <h2>Aktueller Gerätestatus</h2>
                 <p><strong>Status:</strong> <span id="display-on-state">--</span></p>
